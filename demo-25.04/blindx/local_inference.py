@@ -10,6 +10,17 @@ import asyncio
 import torch
 import logging
 
+# クライアントから指定できる推論パラメータの上限
+MAX_NUM_BEAMS = 8
+MAX_LENGTH = 256
+MAX_INPUT_LENGTH = 1024
+
+# 追加引数 (key=value,...) として generate() に渡してよいもの
+ALLOWED_GENERATE_ARGS = {
+    'early_stopping', 'return_legacy_cache', 'length_penalty',
+    'no_repeat_ngram_size', 'repetition_penalty', 'max_length',
+}
+
 class LocalInference():
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -63,12 +74,18 @@ class LocalInference():
         list = message.split(':')
         com = list[0]
         num_beams = int(list[1])
+        if not 1 <= num_beams <= MAX_NUM_BEAMS:
+            raise ValueError(f'num_beams must be between 1 and {MAX_NUM_BEAMS}')
+        if len(list[2]) > MAX_INPUT_LENGTH:
+            raise ValueError(f'input text is too long (max {MAX_INPUT_LENGTH})')
         input_text = self.text_wrapper.encode(list[2])
         fixed_text = ''
         t5_index = int(com[1:])
+        if not 0 <= t5_index < len(self.t5s):
+            raise ValueError(f'invalid dictionary index {t5_index}')
 
         args = {
-            'max_length': 256,
+            'max_length': MAX_LENGTH,
             'num_beams': num_beams,
             'num_return_sequences' : num_beams,
         }
@@ -77,9 +94,17 @@ class LocalInference():
             fixed_text = list[3]
 
         if len(list) > 4:
-            args0 = misc.parse_key_value_string(list[4])
-            args |= misc.parse_key_value_string(list[4])
-        
+            aux_args = misc.parse_key_value_string(list[4])
+            unsupported = sorted(set(aux_args) - ALLOWED_GENERATE_ARGS)
+            if unsupported:
+                raise ValueError(f'unsupported arguments {unsupported}')
+            args |= aux_args
+
+        max_length = args['max_length']
+        if isinstance(max_length, bool) or not isinstance(max_length, int) \
+                or not 1 <= max_length <= MAX_LENGTH:
+            raise ValueError(f'max_length must be between 1 and {MAX_LENGTH}')
+
         return t5_index, input_text, fixed_text, args
 
     def tokenize_fixed_text(self, fixed_text):

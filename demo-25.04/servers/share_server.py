@@ -7,6 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 #
 import blindx.misc as misc
 import asyncio
+import hmac
 import websockets
 import logging
 
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 connected_clients = set()
 connected_names = {}
 lines = []
+share_server_key = None
 
 available_names = [
     'Alice', 'Bob', 'Charol', 'Charile', 'Dave', 'Eve', 'Ellen', 'Frank', 'Isac', 'IVan', 
@@ -33,8 +35,26 @@ async def send_all_async(websocket, message):
         if client != websocket:
             await client.send(message)
 
+def load_share_server_key():
+    key = misc.load_args_from_file('assets/config.txt').get('share_server_key')
+    return str(key) if key is not None else None
+
+async def verify_async(websocket):
+    # share_server_key が設定されていれば、サブプロトコルで渡されたキーと照合する
+    if not share_server_key:
+        return True
+    subprotocol = websocket.subprotocol or ''
+    if hmac.compare_digest(subprotocol, share_server_key):
+        return True
+    logger.warning('unauthorized client')
+    await websocket.close(code=4001, reason='unauthorized')
+    return False
+
 async def handle_client(websocket):
     global lines
+    if not await verify_async(websocket):
+        return
+
     if not websocket in connected_clients:
         connected_clients.add(websocket)
         name = available_names.pop(0)
@@ -79,9 +99,17 @@ async def handle_client(websocket):
         del connected_names[websocket]
 
 async def main():
+    global share_server_key
     logger.info('start')
-    async with websockets.serve(handle_client, "localhost", 6790):
-        await asyncio.Future()  
+    share_server_key = load_share_server_key()
+    if share_server_key:
+        subprotocols = [share_server_key]
+    else:
+        subprotocols = None
+        logger.warning('share_server_key is not set. clients are not authenticated.')
+
+    async with websockets.serve(handle_client, "localhost", 6790, subprotocols=subprotocols):
+        await asyncio.Future()
 
 if __name__ == "__main__":
     asyncio.run(main())

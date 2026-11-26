@@ -46,6 +46,14 @@ api_key=[ここにキーを書き込みます]
 
 パーサについては [demo-25.04/blindx/misc.py](./demo-25.04/blindx/misc.py) を参照ください
 
+共有サーバ（[demo-25.04/servers/share_server.py](./demo-25.04/servers/share_server.py)）に認証をかける場合は、
+同じファイルに `share_server_key` を追加します。
+設定すると、共有サーバとクライアントの両方がこのキーで照合します。未設定の場合は認証なしで動作します。
+
+~~~
+share_server_key=[任意の文字列]
+~~~
+
 
 ## ビルドと実行
 

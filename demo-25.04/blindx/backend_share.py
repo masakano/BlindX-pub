@@ -3,6 +3,7 @@
 
 from blindx.backend import Backend
 from blindx.backend import BackendLine
+from blindx.misc import load_args_from_file
 import asyncio
 import websockets
 import logging
@@ -13,6 +14,8 @@ class BackendShare():
 
         self.logger = logging.getLogger(__name__)
         self.uri = "ws://localhost:6790"
+        key = load_args_from_file('assets/config.txt').get('share_server_key')
+        self.key = str(key) if key is not None else None
         self.backend = backend
         self.my_key = None
         self.active_names = []
@@ -25,12 +28,17 @@ class BackendShare():
     def backend_output_callback(self, lines):
         self.sync_event.set()
 
+    async def connect_async(self):
+        # share_server_key が設定されていればサブプロトコルとして送る
+        subprotocols = [self.key] if self.key else None
+        return await websockets.connect(self.uri, subprotocols=subprotocols)
+
     async def start_async(self):
         self.logger.info('start')
         if not self.backend: return # do nothing
 
         try:
-            self.websocket = await websockets.connect(self.uri)
+            self.websocket = await self.connect_async()
         except Exception as e:
             self.logger.error(f'connection failed {e}.')
             self.websocket = None
@@ -40,10 +48,17 @@ class BackendShare():
         self.recv_task = asyncio.create_task(self.recv_loop())
 
         await self.websocket.send('reload:')
-        while not self.my_key:
+        for _ in range(20): # 最大 10 秒待つ
+            if self.my_key:
+                break
             await asyncio.sleep(0.5)
+        else:
+            # 認証に失敗した場合などはサーバから名前が届かないので共有をあきらめる
+            self.logger.error('no response from share server. check share_server_key.')
+            await self.shutdown_async()
+            return
 
-        self.backend.add_output_callback(self.backend_output_callback)    
+        self.backend.add_output_callback(self.backend_output_callback)
 
     async def shutdown_async(self):
         self.logger.info('shutdown')
@@ -84,7 +99,7 @@ class BackendShare():
                 except websockets.ConnectionClosed:
                     self.logger.info(f'reconnect')
                     await self.websocket.close()
-                    self.websocket = await websockets.connect(self.uri)
+                    self.websocket = await self.connect_async()
 
                 except Exception as e:
                     self.logger.warning(f'send_loop failed {e}')
