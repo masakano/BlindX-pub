@@ -1,6 +1,8 @@
 # MIT License (c) 2024, 2025 Masakazu Suzuoki, AxTecChare
 # See LICENSE.txt for details.
 
+import json
+
 class BackendLine:
     def __init__(self):
         self.key = None
@@ -46,23 +48,33 @@ class BackendLine:
         long_output_text = self.long_output_text.replace('\n', '\\n')
         print(f' {lineno}:{self.key}:{input_text}:{stage_input_text}:{output_text}:{long_output_text}')
 
+    # ':' 区切りだと本文に ':' が含まれたとき (バッククォートで囲んだ半角文字など) に
+    # 壊れるため、JSON の配列として直列化する
     def serialize(self):
         self.serialized_text = ''
         if self.key:
-            self.serialized_text += self.key + ':'
-            self.serialized_text += self.input_text + ':'
-            self.serialized_text += self.output_text + ':'
-            self.serialized_text += self.stage_input_text + ':'
-            self.serialized_text += self.prev_output_text + ':'
-            self.serialized_text += self.long_output_text
+            self.serialized_text = json.dumps([
+                self.key,
+                self.input_text,
+                self.output_text,
+                self.stage_input_text,
+                self.prev_output_text,
+                self.long_output_text,
+            ], ensure_ascii=False)
 
     def deserialize(self):
-        lines = self.serialized_text.split(':')
-        if len(lines) == 6:
-            self.key = lines[0]
-            self.input_text = lines[1]
-            self.output_text = lines[2]
-            self.stage_input_text = lines[3]
-            self.prev_output_text = lines[4]
-            self.long_output_text = lines[5]
+        try:
+            fields = json.loads(self.serialized_text)
+        except ValueError:
+            return
+        if isinstance(fields, list) and len(fields) == 6 \
+                and all(isinstance(field, str) for field in fields):
+            (
+                self.key,
+                self.input_text,
+                self.output_text,
+                self.stage_input_text,
+                self.prev_output_text,
+                self.long_output_text,
+            ) = fields
 
