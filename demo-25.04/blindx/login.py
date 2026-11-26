@@ -12,19 +12,31 @@ class Login():
             'Justin', 'Marvin', 'Matilda', 'Oscar', 'Peggy', 'Steve', 'Trent', 'Trudy', 'Walter', 'Zoe' 
         ]
         self.active_names = []
+        self.guest_count = 0
 
     async def login_async(self):
-        name = random.choice(self.available_names)
+        if self.available_names:
+            name = random.choice(self.available_names)
+        else:
+            # 用意した名前を使い切ったら、連番のゲスト名を払い出す
+            self.guest_count += 1
+            name = f'Guest{self.guest_count}'
         await self.connect_async(name)
         return name
 
+    # 再接続 (Flet の on_connect / on_disconnect) からも呼ばれるため、
+    # 二重登録や、すでに取り除かれた名前の削除で例外にならないようにする
     async def connect_async(self, name):
         self.logger.info(f'connect {name}')
-        self.active_names.append(name)
-        self.available_names.remove(name)
+        if name not in self.active_names:
+            self.active_names.append(name)
+        if name in self.available_names:
+            self.available_names.remove(name)
 
     async def disconnect_async(self, name):
-        self.active_names.remove(name)
-        self.available_names.append(name)
+        if name in self.active_names:
+            self.active_names.remove(name)
+        if name not in self.available_names:
+            self.available_names.append(name)
         self.logger.info(f'disconnect {name}')
 
