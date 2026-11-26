@@ -98,7 +98,7 @@ class Backend():
             if self.lines[replace_lineno].key == key:
                 break
             elif self.lines[replace_lineno].key == None:
-                self_lines[replace_lineno].key = key
+                self.lines[replace_lineno].key = key
                 return replace_lineno
 
         self.lines.insert(lineno, BackendLine())
