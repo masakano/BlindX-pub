@@ -21,13 +21,19 @@ class BackendShare():
         self.recv_task = None
         self.lines = []
         self.sync_event = asyncio.Event()
+        self.loop = None
 
     def backend_output_callback(self, lines):
-        self.sync_event.set()
+        # Backend の推論スレッドからも呼ばれる。asyncio.Event はスレッドセーフではなく、
+        # 別スレッドから set() してもイベントループが起きないことがあるため、
+        # ループのスレッドで set() させる
+        if self.loop and not self.loop.is_closed():
+            self.loop.call_soon_threadsafe(self.sync_event.set)
 
     async def start_async(self):
         self.logger.info('start')
         if not self.backend: return # do nothing
+        self.loop = asyncio.get_running_loop()
 
         try:
             self.websocket = await websockets.connect(self.uri)
@@ -64,6 +70,8 @@ class BackendShare():
             while self.websocket:
                 try:
                     await self.sync_event.wait()
+                    # 送信中に届いた通知を取りこぼさないよう、処理の前に下ろす
+                    self.sync_event.clear()
                     if not self.backend.lines:
                         if self.lines:
                             self.lines = []
@@ -78,8 +86,6 @@ class BackendShare():
                                     line.serialize()
                                     self.lines[lineno] = line.dup()
                                     await self.websocket.send(str(lineno) + ':' + line.serialized_text)
-
-                    self.sync_event = asyncio.Event()
 
                 except websockets.ConnectionClosed:
                     self.logger.info(f'reconnect')
