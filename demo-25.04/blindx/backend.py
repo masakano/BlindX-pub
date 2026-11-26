@@ -34,7 +34,8 @@ class Backend():
         self.logger = logging.getLogger(__name__)
         self.exec_condition = ConditionVariable()
         self.output_callbacks = set()
-        self.key = None
+        # 変換を要求したことのあるユーザ (このプロセスで入力しているユーザ)
+        self.request_keys = set()
         self.dict_names = None
         self.wait_level = 0
         self.wait_times = [
@@ -154,7 +155,8 @@ class Backend():
                 line.report(lineno)
 
     def request(self, key):
-        self.key = key
+        # 直前の要求を上書きしないよう、要求元のユーザをすべて覚えておく
+        self.request_keys.add(key)
         self.exec_condition.notify_all()
 
     def thread_func(self):
@@ -182,7 +184,7 @@ class Backend():
 
         for lineno, line in enumerate(self.lines):
             attr = self.get_attr(line.key)
-            if line.key == self.key:
+            if line.key in self.request_keys:
                 if line.input_text != line.stage_input_text:
                     if self.fix_trivial_difference(line):
                         pass
