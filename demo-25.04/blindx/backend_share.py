@@ -51,9 +51,11 @@ class BackendShare():
         if self.backend:
             self.backend.discard_output_callback(self.backend_output_callback)    
 
+        # 接続に失敗していた場合はタスクが作られていない
         for task in (self.sync_task, self.recv_task):
-            task.cancel()
-            task = None
+            if task:
+                task.cancel()
+        self.sync_task = self.recv_task = None
 
         if self.websocket:
             await self.websocket.close()
