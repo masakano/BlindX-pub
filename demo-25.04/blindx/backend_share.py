@@ -112,7 +112,9 @@ class BackendShare():
                     else:    
                         lineno = int(list[0])
                         if lineno >= len(self.backend.lines):
-                            self.backend.lines.extend([BackendLine()] * (lineno + 1 - len(self.lines)))
+                            # [BackendLine()] * n だと同じオブジェクトが n 個並ぶので、1 行ずつ作る
+                            self.backend.lines.extend(
+                                BackendLine() for _ in range(lineno + 1 - len(self.backend.lines)))
 
                         self.backend.lines[lineno].serialized_text = list[1]
                         self.backend.lines[lineno].deserialize()
@@ -131,5 +133,5 @@ class BackendShare():
         if lenA > lenB:
             del self.lines[lenB:]
         if lenA < lenB:
-            self.lines.extend([BackendLine()] * (lenB - lenA))
+            self.lines.extend(BackendLine() for _ in range(lenB - lenA))
 
