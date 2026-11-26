@@ -6,6 +6,16 @@ import websockets
 import logging
 from .misc import set_logger, load_args_from_file
 
+def mask_secret(secret, visible=2):
+    # ログに出すときは末尾 visible 文字だけ残して残りを * で隠す
+    # (短い値は全体を隠す)
+    if not secret:
+        return ''
+    secret = str(secret)
+    if len(secret) <= visible * 2:
+        return '*' * len(secret)
+    return '*' * (len(secret) - visible) + secret[-visible:]
+
 class RemoteInference():
 
     def __init__(self):
@@ -40,7 +50,7 @@ class RemoteInference():
             self.logger.error(f' ******************************************************** ')
             self.logger.error(f' * 変換サーバの uri または key が違う可能性があります')
             self.logger.error(f' *     uri : {self.uri}')
-            self.logger.error(f' *     key : {self.key}')
+            self.logger.error(f' *     key : {mask_secret(self.key)}')
             self.logger.error(f' ******************************************************** ')
             self.websocket = None
                 
