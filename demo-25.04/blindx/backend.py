@@ -5,7 +5,6 @@ from .remote_inference import RemoteInference
 from .backend_line import BackendLine
 
 import asyncio
-import time
 import threading
 import logging
 
@@ -41,8 +40,9 @@ class Backend():
             None, 1.0, 2.0, 4.0
         ]
         self.attrs = {}
+        self.ready_event = threading.Event()
 
-    def default_attr(self):    
+    def default_attr(self):
         return {
             'max_concat_size':64,
             'truncate_step':12,
@@ -137,8 +137,8 @@ class Backend():
         self.is_cancel = False
         self.thread = threading.Thread(target=self.thread_func)
         self.thread.start()
-        while not self.dict_names:
-            time.sleep(0.1)
+        # 辞書一覧の取得が終わるか、スレッドが異常終了するまで待つ
+        self.ready_event.wait()
 
     def shutdown(self):    
         self.logger.info('shutdown')
@@ -158,11 +158,20 @@ class Backend():
         self.exec_condition.notify_all()
 
     def thread_func(self):
-        asyncio.run(self.event_loop())
+        try:
+            asyncio.run(self.event_loop())
+        except Exception:
+            self.logger.exception('backend thread terminated unexpectedly')
+        finally:
+            # start() が待ち続けないよう、異常終了時も必ず起こす
+            if self.dict_names is None:
+                self.dict_names = []
+            self.ready_event.set()
 
     async def event_loop(self):
         async with RemoteInference() as inference:
             await self.query_list_async(inference)
+            self.ready_event.set()
             is_in_time = False
             while not self.is_cancel:
                 is_in_time = self.exec_condition.wait(self.wait_times[self.wait_level])
@@ -170,6 +179,12 @@ class Backend():
                     await self.on_request_async(inference, is_in_time)
 
     async def query_list_async(self, inference):
+        if not inference.websocket:
+            # 未接続だと send_recv_async() は入力をそのまま返すため、
+            # 'dict_names' が辞書名として登録されてしまう
+            self.logger.error('inference server is not connected. no dictionaries available.')
+            self.dict_names = []
+            return
         recv_message = await inference.send_recv_async('query:', 'dict_names')
         self.dict_names = recv_message.split(':')
 
