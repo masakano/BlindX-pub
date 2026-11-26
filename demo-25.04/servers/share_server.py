@@ -29,9 +29,14 @@ def report():
 
 
 async def send_all_async(websocket, message):
-    for client in connected_clients:
+    # 送信を待つ間に他の接続が切れて集合が変わるので、コピーしてから回す。
+    # 切れた相手への送信失敗で、送り主の接続まで落とさない。
+    for client in list(connected_clients):
         if client != websocket:
-            await client.send(message)
+            try:
+                await client.send(message)
+            except websockets.ConnectionClosed:
+                logger.info('skip disconnected client')
 
 async def handle_client(websocket):
     global lines
